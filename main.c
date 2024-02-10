@@ -14,6 +14,7 @@ typedef signed long ssize_t;
 #define INTERRUPT(i) ((1 << 31) | (i))
 #define INTERRUPT_MACHINE_EXTERNAL  INTERRUPT(11)
 #define INTERRUPT_DEV(i)            INTERRUPT(16 + (i))
+#define INTERRUPT_STDIN INTERRUPT_DEV(0)
 
 #define MSTATUS_MIE (1 << 3)
 
@@ -30,27 +31,33 @@ typedef signed long ssize_t;
 #define RETURN_NEVER    __attribute__((noreturn))
 #define INLINE_ALWAYS   __attribute__((always_inline))
 #define INLINE_NEVER    __attribute__((noinline))
+#define INTERRUPT_HANDLER(mode) __attribute__((interrupt(mode)))
 
 static volatile int pos = 0;
 static char buf[128];
 static int test = 0;
 
-unsigned value = 0;
-
 extern char *__bss_start;
 extern char *_edata;
 extern char *_end;
 
-#define csrrw(reg, v) asm volatile("csrrw x0, " #reg ", %0" : : "r"(v) )
-#define csrrs(reg, v) asm volatile("csrrs x0, " #reg ", %0" : : "r"(v) )
-#define csrrc(reg, v) asm volatile("csrrc x0, " #reg ", %0" : : "r"(v) )
+#define csr(reg) \
+    ({ \
+        uint32_t ret; \
+        asm volatile("csrrs %0, " #reg ", x0" : "=r"(ret) ); \
+        ret; \
+    })
+
+#define csrw(reg, v) asm volatile("csrrw x0, " #reg ", %0" : : "r"(v) )
+#define csrs(reg, v) asm volatile("csrrs x0, " #reg ", %0" : : "r"(v) )
+#define csrc(reg, v) asm volatile("csrrc x0, " #reg ", %0" : : "r"(v) )
 
 INLINE_ALWAYS static inline void pause() { asm volatile("pause"); }
 INLINE_ALWAYS static inline void ebreak() { asm volatile("ebreak"); }
 INLINE_ALWAYS static inline void wfi() { asm volatile("wfi"); }
-INLINE_ALWAYS static inline void set_mie(int mask) { csrrw(mie, mask); }
-INLINE_ALWAYS static inline void sti() { csrrs(mstatus, MSTATUS_MIE); }
-INLINE_ALWAYS static inline void cli() { csrrc(mstatus, MSTATUS_MIE); }
+INLINE_ALWAYS static inline void set_mie(int mask) { csrw(mie, mask); }
+INLINE_ALWAYS static inline void sti() { csrs(mstatus, MSTATUS_MIE); }
+INLINE_ALWAYS static inline void cli() { csrc(mstatus, MSTATUS_MIE); }
 
 RETURN_NEVER
 static void halt() {
@@ -106,6 +113,12 @@ static void reverse(char *s, char *e) {
 int itoa(int n, char *nptr) {
     int i = 0, len = 0;
 
+    if (n == 0) {
+        nptr[0] = '0';
+        nptr[1] = 0;
+        return 1;
+    }
+
     if (n < 0) {
         nptr[0] = '-';
         i = len = 1;
@@ -135,7 +148,7 @@ int printf(const char *fmt, ...) {
     bool alt = false, zero = false;
     va_list ap;
     unsigned int x;
-    int i, width = 0;
+    int i, width;
     char buf[64];
     const char *s;
 
@@ -166,6 +179,7 @@ int printf(const char *fmt, ...) {
             }
         }
 
+        width = 0;
         for (; isdigit(*fmt); ++fmt) {
             width *= 10;
             width += *fmt - '0';
@@ -320,8 +334,9 @@ static void handle_device_stdin() {
 
 static long handle_int(long cause, long npc) {
     switch (cause) {
-    case INTERRUPT_DEV(0):
+    case INTERRUPT_STDIN:
         handle_device_stdin();
+        csrc(mip, 1 << (INTERRUPT_STDIN & 63));
         break;
     default:
         printf("unimplemented interrupt %d\n", (int) cause & 0x7fffffff);
@@ -330,19 +345,27 @@ static long handle_int(long cause, long npc) {
     return npc;
 }
 
-long isr(long cause, long val, long npc) {
+INTERRUPT_HANDLER("machine")
+void isr_entry(void) {
+    long cause = csr(mcause);
+    long val = csr(mtval);
+    long epc = csr(mepc);
+
     if (cause >= 0) {
-        return handle_excp(cause, val, npc);
+        epc = handle_excp(cause, val, epc);
     } else {
-        return handle_int(cause, npc);
+        epc = handle_int(cause, epc);
     }
+
+    csrw(mepc, epc);
 }
 
 void start() {
+    memset(__bss_start, 0, _end - __bss_start);
+
+    csrw(mtvec, isr_entry);
     set_mie(~0);
     sti();
-
-    memset(__bss_start, 0, _end - __bss_start);
 
     // printf("%%s     = \"%s\"\n", "hello");
     // printf("%%10s   = \"%10s\"\n", "hello");
@@ -354,10 +377,9 @@ void start() {
     // printf("%%#016x = \"%#016x\"\n", 0xbeef);
 
     for (;;) {
-        printf("emcpu $ ");
+        printf("[%d] emcpu $ ", csr(minstret));
         wfi();
 
-#if 1
         cli();
         if (pos > 1 && buf[pos - 2] == '\n') {
             buf[pos - 2] = 0;
@@ -365,14 +387,11 @@ void start() {
             pos = 0;
         }
         sti();
-#endif
 
-#if 1
         if (test) {
             test = 0;
             volatile int *p = (int *) 0x1000000;
             *p += 1;
         }
-#endif
     }
 }
