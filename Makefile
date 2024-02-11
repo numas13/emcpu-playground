@@ -18,7 +18,7 @@ clean:
 	$(RM) a.bin a.out $(objects)
 
 run: a.bin
-	cargo run --manifest-path ../emcpu/Cargo.toml -- a.bin
+	cargo run --manifest-path ../emcpu/Cargo.toml --example execute-binary -- a.bin
 
 dump: a.out
 	$(OBJDUMP) -d $<
