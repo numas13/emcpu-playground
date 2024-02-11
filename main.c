@@ -5,13 +5,16 @@
 typedef unsigned long size_t;
 typedef signed long ssize_t;
 
+typedef unsigned long uintptr_t;
+typedef long intptr_t;
+
 #define EXCP_INSN_ADDR_MISALIGNED 0
 #define EXCP_ILLEGAL_INSN 2
 #define EXCP_BREAKPOINT 3
 #define EXCP_LOAD_ACCESS_FAULT 5
 #define EXCP_STORE_AMO_ACCESS_FAULT 7
 
-#define INTERRUPT(i) ((1 << 31) | (i))
+#define INTERRUPT(i) ((1ULL << (sizeof(intptr_t) * 8 - 1)) | (i))
 #define INTERRUPT_MACHINE_EXTERNAL  INTERRUPT(11)
 #define INTERRUPT_DEV(i)            INTERRUPT(16 + (i))
 #define INTERRUPT_STDIN INTERRUPT_DEV(0)
@@ -43,7 +46,7 @@ extern char *_end;
 
 #define csr(reg) \
     ({ \
-        uint32_t ret; \
+        uint64_t ret; \
         asm volatile("csrrs %0, " #reg ", x0" : "=r"(ret) ); \
         ret; \
     })
@@ -55,7 +58,7 @@ extern char *_end;
 INLINE_ALWAYS static inline void pause() { asm volatile("pause"); }
 INLINE_ALWAYS static inline void ebreak() { asm volatile("ebreak"); }
 INLINE_ALWAYS static inline void wfi() { asm volatile("wfi"); }
-INLINE_ALWAYS static inline void set_mie(int mask) { csrw(mie, mask); }
+INLINE_ALWAYS static inline void set_mie(size_t mask) { csrw(mie, mask); }
 INLINE_ALWAYS static inline void sti() { csrs(mstatus, MSTATUS_MIE); }
 INLINE_ALWAYS static inline void cli() { csrc(mstatus, MSTATUS_MIE); }
 
@@ -147,7 +150,7 @@ int printf(const char *fmt, ...) {
     int n = 0;
     bool alt = false, zero = false;
     va_list ap;
-    unsigned int x;
+    unsigned long x;
     int i, width;
     char buf[64];
     const char *s;
@@ -300,7 +303,7 @@ static void handle_command(char *cmd) {
     }
 }
 
-static long handle_excp(long cause, long val, long npc) {
+static uintptr_t handle_excp(intptr_t cause, uintptr_t val, uintptr_t npc) {
     switch (cause) {
     case EXCP_INSN_ADDR_MISALIGNED:
         puts("misaligned instruction address");
@@ -332,7 +335,7 @@ static void handle_device_stdin() {
     } while(c);
 }
 
-static long handle_int(long cause, long npc) {
+static uintptr_t handle_int(intptr_t cause, uintptr_t npc) {
     switch (cause) {
     case INTERRUPT_STDIN:
         handle_device_stdin();
@@ -347,9 +350,9 @@ static long handle_int(long cause, long npc) {
 
 INTERRUPT_HANDLER("machine")
 void isr_entry(void) {
-    long cause = csr(mcause);
-    long val = csr(mtval);
-    long epc = csr(mepc);
+    intptr_t cause = csr(mcause);
+    uintptr_t val = csr(mtval);
+    uintptr_t epc = csr(mepc);
 
     if (cause >= 0) {
         epc = handle_excp(cause, val, epc);
@@ -377,7 +380,7 @@ void start() {
     // printf("%%#016x = \"%#016x\"\n", 0xbeef);
 
     for (;;) {
-        printf("[%d] emcpu $ ", csr(minstret));
+        printf("emcpu $ ");
         wfi();
 
         cli();
