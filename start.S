@@ -1,11 +1,12 @@
     .global _start
 _start:
-    ld gp, global_pointer_hack
+    .option push
+    .option norelax
+0:
+    auipc gp, %pcrel_hi(__global_pointer$)
+    addi gp, gp, %pcrel_lo(0b)
+    .option pop
 
     li t0, 0x8000
     add sp, gp, t0
     j start
-
-    .section ".rodata"
-global_pointer_hack:
-    .dword __global_pointer$

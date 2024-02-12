@@ -1,7 +1,7 @@
 TARGET := riscv64-unknown-linux-gnu-
 
 CC := $(TARGET)cc
-CFLAGS := -march=rv64imc_zicsr_zihintpause -mabi=lp64 -O2 -ffreestanding
+CFLAGS := -march=rv64imc_zicsr_zihintpause -mabi=lp64 -O2 -fpie -ffreestanding
 LD := $(CC)
 LDFLAGS := -nostdlib -static -Wl,-Ttext,0
 
