@@ -34,7 +34,7 @@ typedef long intptr_t;
 #define RETURN_NEVER    __attribute__((noreturn))
 #define INLINE_ALWAYS   __attribute__((always_inline))
 #define INLINE_NEVER    __attribute__((noinline))
-#define INTERRUPT_HANDLER(mode) __attribute__((interrupt(mode)))
+#define INTERRUPT_HANDLER(mode) __attribute__((interrupt(mode), aligned(4)))
 
 static volatile int pos = 0;
 static char buf[128];
@@ -370,14 +370,16 @@ void start() {
     set_mie(~0);
     sti();
 
-    // printf("%%s     = \"%s\"\n", "hello");
-    // printf("%%10s   = \"%10s\"\n", "hello");
-    // printf("%%d     = \"%d\"\n", -1234);
-    // printf("%%10u   = \"%10u\"\n", -1234);
-    // printf("%%x     = \"%x\"\n", 0xbeef);
-    // printf("%%016x  = \"%016x\"\n", 0xbeef);
-    // printf("%%#16x  = \"%#16x\"\n", 0xbeef);
-    // printf("%%#016x = \"%#016x\"\n", 0xbeef);
+#if 0
+    printf("%%s     = \"%s\"\n", "hello");
+    printf("%%10s   = \"%10s\"\n", "hello");
+    printf("%%d     = \"%d\"\n", -1234);
+    printf("%%10u   = \"%10u\"\n", -1234);
+    printf("%%x     = \"%x\"\n", 0xbeef);
+    printf("%%016x  = \"%016x\"\n", 0xbeef);
+    printf("%%#16x  = \"%#16x\"\n", 0xbeef);
+    printf("%%#016x = \"%#016x\"\n", 0xbeef);
+#endif
 
     for (;;) {
         printf("emcpu $ ");
